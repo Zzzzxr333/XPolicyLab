@@ -1,4 +1,6 @@
 import os
+import json
+import time
 
 # Set rendering backend for MuJoCo
 os.environ["MUJOCO_GL"] = "egl"
@@ -102,6 +104,8 @@ def main(args):
     stats_path = os.path.join(ckpt_dir, f"dataset_stats.pkl")
     with open(stats_path, "wb") as f:
         pickle.dump(stats, f)
+    with open(os.path.join(ckpt_dir, "run_config.json"), "w") as f:
+        json.dump({"args": args, "config": config, "task_config": task_config}, f, indent=2)
     best_ckpt_info = train_bc(train_dataloader, val_dataloader, config)
     best_epoch, min_val_loss, best_state_dict = best_ckpt_info
 
@@ -169,6 +173,9 @@ def train_bc(train_dataloader, val_dataloader, config):
     min_val_loss = np.inf
     best_ckpt_info = None
 
+    metrics = []
+    started = time.monotonic()
+    torch.cuda.reset_peak_memory_stats()
     for epoch in tqdm(range(num_epochs)):
         # validation
         with torch.inference_mode():
@@ -188,6 +195,8 @@ def train_bc(train_dataloader, val_dataloader, config):
         for k, v in epoch_summary.items():
             summary_string += f"{k}: {v.item():.3f} "
 
+        val_metrics = {k: float(v.item()) for k, v in epoch_summary.items()}
+
         # training
         policy.train()
         optimizer.zero_grad()
@@ -195,6 +204,8 @@ def train_bc(train_dataloader, val_dataloader, config):
             forward_dict = forward_pass(data, policy)
             # backward
             loss = forward_dict["loss"]
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"Non-finite loss at epoch {epoch}, batch {batch_idx}")
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -203,6 +214,16 @@ def train_bc(train_dataloader, val_dataloader, config):
         summary_string = ""
         for k, v in epoch_summary.items():
             summary_string += f"{k}: {v.item():.3f} "
+
+        record = {"epoch": epoch + 1, "train": {k: float(v.item()) for k, v in epoch_summary.items()},
+                  "val": val_metrics, "elapsed_seconds": time.monotonic() - started,
+                  "peak_cuda_allocated_mib": torch.cuda.max_memory_allocated() / 2**20,
+                  "peak_cuda_reserved_mib": torch.cuda.max_memory_reserved() / 2**20}
+        metrics.append(record)
+        with open(os.path.join(ckpt_dir, "metrics.json"), "w") as f:
+            json.dump(metrics, f, indent=2)
+        print(f"Epoch {epoch + 1}/{num_epochs}: train_loss={record['train']['loss']:.6f} "
+              f"val_loss={val_metrics['loss']:.6f} peak_allocated={record['peak_cuda_allocated_mib']:.0f} MiB", flush=True)
 
         if (epoch + 1) % config['save_freq'] == 0:
             ckpt_path = os.path.join(ckpt_dir, f"policy_epoch_{epoch + 1}_seed_{seed}.ckpt")

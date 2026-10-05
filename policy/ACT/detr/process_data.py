@@ -8,7 +8,7 @@ import json
 from XPolicyLab.utils.load_file import load_hdf5
 from XPolicyLab.utils.process_data import pack_robot_state, get_robot_action_dim_info, decode_image_bit
 
-def data_transform(path, episode_num, load_data_dir, save_dir, robot_action_dim_info):
+def data_transform(path, episode_num, load_data_dir, save_dir, robot_action_dim_info, is_sim=False):
     begin = 0
     floders = os.listdir(path)
     assert episode_num <= len(floders), "data num not enough"
@@ -55,6 +55,8 @@ def data_transform(path, episode_num, load_data_dir, save_dir, robot_action_dim_
         hdf5path = os.path.join(save_dir, f"episode_{current_episode}.hdf5")
 
         with h5py.File(hdf5path, "w") as f:
+            # RoboTwin stores each observation with its next-step target action.
+            f.attrs["is_sim"] = is_sim
             f.create_dataset("action", data=np.array(actions, dtype=np.float32))
             obs = f.create_group("observations")
             obs.create_dataset("qpos", data=np.array(qpos, dtype=np.float32))
@@ -74,6 +76,7 @@ if __name__ == "__main__":
     parser.add_argument("ckpt_name", type=str, help="Run name; also selects raw task dir under data/<bench>/",)
     parser.add_argument("env_cfg_type", type=str, help="The name of the environment config",)
     parser.add_argument("action_type", type=str, help="The type of action to process (e.g., joint)",)
+    parser.add_argument("--is_sim", action="store_true", help="RoboTwin observations already align with their next-step action targets")
     args = parser.parse_args()
     
     bench_name = args.bench_name
@@ -91,7 +94,7 @@ if __name__ == "__main__":
     episode_num = len([name for name in os.listdir(raw_episode_dir)
                        if name.startswith("episode_") and name.endswith(".hdf5")])
 
-    begin = data_transform(raw_episode_dir, episode_num, load_data_dir, save_dir, robot_action_dim_info)
+    begin = data_transform(raw_episode_dir, episode_num, load_data_dir, save_dir, robot_action_dim_info, is_sim=args.is_sim)
 
     print()
 
