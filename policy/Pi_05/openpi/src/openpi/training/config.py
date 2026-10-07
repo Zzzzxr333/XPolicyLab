@@ -770,6 +770,31 @@ _CONFIGS = [
     ),
 ]
 
+# Local 4090 bread LoRA configuration, shared by training and inference.
+from openpi.shared import nnx_utils as _bread_nnx_utils
+_bread_lora_model = pi0_config.Pi0Config(
+    pi05=True, paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+)
+_bread_base = next(config for config in _CONFIGS if config.name == "pi05_base_aloha_full_sim_arx-x5_seed_0")
+_CONFIGS.append(dataclasses.replace(
+    _bread_base,
+    name="pi05_bread_lora_4090",
+    model=_bread_lora_model,
+    freeze_filter=nnx.Not(_bread_nnx_utils.PathRegex(".*lora.*")),
+    data=dataclasses.replace(
+        _bread_base.data,
+        repo_id="local/bread_square_100",
+        assets=AssetsConfig(
+            assets_dir="/root/autodl-tmp/checkpoints/pi05_base/assets",
+            asset_id="bread_square_100_demo",
+        ),
+    ),
+    weight_loader=weight_loaders.CheckpointWeightLoader("/root/autodl-tmp/checkpoints/pi05_base/params"),
+    batch_size=1, num_workers=0, fsdp_devices=1, ema_decay=None,
+    num_train_steps=1000, log_interval=1, save_interval=1000, keep_period=None,
+    wandb_enabled=False,
+))
+
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}

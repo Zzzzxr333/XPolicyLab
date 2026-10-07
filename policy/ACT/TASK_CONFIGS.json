@@ -1,0 +1,12 @@
+{
+    "bread_square_20-place_bread_basket-aloha_agilex-joint": {
+        "dataset_dir": "processed_data/bread_square_20/place_bread_basket/aloha_agilex-joint",
+        "num_episodes": 20,
+        "episode_len": 5000,
+        "camera_names": [
+            "cam_head",
+            "cam_right_wrist",
+            "cam_left_wrist"
+        ]
+    }
+}
